@@ -1,0 +1,84 @@
+Created on Wed Feb 22 10:47:01 2023
+
+@author: Peter Bauer-Gottwein
+
+Modified to also extracting ATL03 by Anne Bak & Claudia Lorentzen
+"""
+
+import h5py
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+import glob, os, shutil
+import geopandas as gpd
+from geopandas import GeoDataFrame
+from shapely.geometry import Point
+import fiona
+#%%
+## basefoldername = r"path" #folder containing all the downladed data (organized in subfolders)
+basefoldername = r"D:\Aga\02 ATL08" #folder containing all the downladed data (organized in subfolders)
+tracknames = ['gt1l', 'gt1r', 'gt2l', 'gt2r', 'gt3l', 'gt3r']
+pname = r"D:\Aga\01 GIS\CHI-MUN_wgs84.shp" #shapefile of area of interest
+outfolder =  r"D:\Aga\02 ATL08\Extract ATL08"
+#%%
+# basefoldername = r'h:\Greenland\Icesat\ATL08' #folder containing all the downloaded data (organized in subfolders)
+# tracknames = ['gt1l', 'gt1r', 'gt2l', 'gt2r', 'gt3l', 'gt3r']
+# pname = r'h:\Greenland\Icesat\Icesat_Greenland_2.shp' #shapefile of area of interest
+#%%
+poly=gpd.read_file(pname)
+polygon = poly.geometry.union_all() #union of chi and mun basins
+os.chdir(basefoldername)
+
+dirs = glob.glob("*.h5")
+
+for foldername in dirs:
+    
+    print(foldername)
+    # os.chdir(basefoldername + os.sep + foldername)
+    # filename = glob.glob('*.h5')[0]   
+    filename = foldername
+    
+    fname = basefoldername + os.sep + foldername #+ os.sep + filename
+    f = h5py.File(fname, 'r')
+    outfoldername = basefoldername + os.sep# + foldername + os.sep
+    
+    fiona.supported_drivers['LIBKML'] = 'rw'
+    fdate = f['ancillary_data']['data_start_utc'][0]
+    month = int(str(fdate).split('-')[1])
+
+    if month > 5 or month < 6:
+        for track in tracknames:
+            print(track)
+            csvname = outfolder + os.sep + filename.split('.')[0] + '_'+ track + '.csv'
+            # kmlname = outfolder + os.sep + filename.split('.')[0] + '_'+ track + '.kml'
+            print(csvname)
+            
+            # Turn on if extracting ATL08 data
+            lat = f[track]['land_segments']['latitude']
+            lon = f[track]['land_segments']['longitude']
+            elev = f[track]['land_segments']['terrain']['h_te_best_fit']
+            
+            # Turn on if extracting ATL03 data
+            # lat = f[track]['heights']['lat_ph']
+            # lon = f[track]['heights']['lon_ph']
+            # elev = f[track]['heights']['h_ph']
+            
+            data = {'lat':  lat[:],
+                'lon': lon[:],
+                'elev': elev[:]
+                }
+            df = pd.DataFrame(data, columns = ['lat','lon','elev'])
+            gdf = GeoDataFrame(
+                                df.drop(['lon', 'lat',], axis=1),
+                                crs={'init': 'epsg:4326'},
+                                geometry=[Point(xy) for xy in zip(df.lon, df.lat)])
+            subset = gdf[gdf.within(polygon)]
+            if not subset.empty:
+                # subset.to_file(kmlname, driver='LIBKML')
+                dfsub = subset.drop('geometry', axis=1)
+                dfsub['lon'] = gdf.geometry.apply(lambda p: p.x)
+                dfsub['lat'] = gdf.geometry.apply(lambda p: p.y)
+                dfsub.to_csv(csvname)
+    f.close()
+f = None
+os.chdir(basefoldername)
