@@ -1,0 +1,461 @@
+import os
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import glob
+
+#Loading data
+
+dem_folder=r"D:\Aga\03 DEM\DEM correction"
+atl08_zip=r"D:\Aga\03 DEM\DEM correction\ATL08_test\ATL08_completed.csv.gz"
+atl08_data=pd.read_csv(atl08_zip, compression='gzip')
+
+
+#Create a table with dem elevation and atl08 elevation
+
+def parcours(dem_file, df_atl08_all, dem_name):
+    print(f'Loading {dem_name} file...')
+    df_dem=pd.read_csv(dem_file, compression='gzip')
+    df_dem=df_dem.rename(columns={'latitude':'lat','longitude':'lon'})
+    df_dem=df_dem.rename(columns={'dem_elevation_corrected':'DEM_elev'})
+    print("Columns dem loaded :", df_dem.columns.tolist())
+    print("Columns atl08 loaded :", df_atl08_all.columns.tolist())
+    #Rounding ATL08 lat and lon values ...
+    df_atl08_all['lat']=df_atl08_all['lat'].round(6)
+    df_atl08_all['lon']=df_atl08_all['lon'].round(6)
+    df_dem['lat']=df_dem['lat'].round(6)
+    df_dem['lon']=df_dem['lon'].round(6)
+    df_merge=pd.merge(df_atl08_all, 
+                df_dem,
+                on=['lat','lon'], how='inner')
+    df_merge=df_merge.rename(columns={'DEM_elev': dem_name})
+    print(f"{len(df_merge)} points found for {dem_name}")
+    return df_merge
+
+
+def merge_dem(df_atl08_all, dem_folder):
+    print('Merging dems...')
+    dem_files=glob.glob(os.path.join(dem_folder,"*.csv.gz"))
+    merged_df=df_atl08_all.copy()
+    for dem_file in dem_files:
+        dem_name=os.path.basename(dem_file).split('_')[0].capitalize()
+        print(f"Loading dem : {dem_name}")
+        df_dem=parcours(dem_file, df_atl08_all,dem_name=dem_name)
+        if df_dem.empty:
+            print("No correspondance found for {dem_name}")
+            continue
+        merged_df=pd.merge(merged_df, df_dem[['lat', 'lon', dem_name]], on=['lat', 'lon'], how='left')
+    print('Successfully merged')
+    return merged_df
+
+print("Data merged final")
+
+# Calculate the stat all elevation
+
+print('Calculating stats all elevations')
+df1=merge_dem(atl08_data,dem_folder)
+print(df1.head())
+print('Before cleaning')
+print(f"Min : {atl08_data['ICESat'].min()}")
+print(f"Max : {atl08_data['ICESat'].max()}")
+
+print('Cleaning ICESat data')
+mask_valid=(df1['ICESat']>=-500) & (df1['ICESat']<=9000)
+df2=df1.copy()
+df2.loc[~mask_valid, 'ICESat']=np.nan
+print('After cleaning')
+print(f"Min : {df2['ICESat'].min()}")
+print(f"Max : {df2['ICESat'].max()}")
+print(f'Points suppressed : {len(df1) - len(df2)}')
+
+
+
+###-------------- calculate error each DEMs ---------------###
+
+errors_Aster = np.array(df2['Aster'] - df2['ICESat'])
+errors_Aster = errors_Aster[~np.isnan(errors_Aster)]
+
+errors_Aw3d30 = np.array(df2['Aw3d30'] - df2['ICESat'])
+errors_Aw3d30 = errors_Aw3d30[~np.isnan(errors_Aw3d30)]
+
+errors_Fabdem = np.array(df2['Fabdem'] - df2['ICESat'])
+errors_Fabdem = errors_Fabdem[~np.isnan(errors_Fabdem)]
+
+errors_Srtm = np.array(df2['Srtm'] - df2['ICESat'])
+errors_Srtm = errors_Srtm[~np.isnan(errors_Srtm)]
+
+errors_Merit = np.array(df2['Merit'] - df2['ICESat'])
+errors_Merit = errors_Merit[~np.isnan(errors_Merit)]
+
+errors_Glo30 = np.array(df2['Glo30'] - df2['ICESat'])
+errors_Glo30 = errors_Glo30[~np.isnan(errors_Glo30)]
+
+errors_Nhc = np.array(df2['Nhc'] - df2['ICESat'])
+errors_Nhc = errors_Nhc[~np.isnan(errors_Nhc)]
+
+errors_Tandem = np.array(df2['Tandem'] - df2['ICESat'])
+errors_Tandem = errors_Tandem[~np.isnan(errors_Tandem)]
+
+errors_Hydroshed = np.array(df2['Hydroshed'] - df2['ICESat'])
+errors_Hydroshed = errors_Hydroshed[~np.isnan(errors_Hydroshed)]
+###------------------------------------------------------------###
+
+### ------------------------- Mean Error ------------------------- ###
+
+ME_Aster = np.mean(errors_Aster)
+ME_Aw3d30  = np.mean(errors_Aw3d30)
+ME_Fabdem = np.mean(errors_Fabdem)
+ME_Srtm  = np.mean(errors_Srtm)
+ME_Merit = np.mean(errors_Merit)
+ME_Glo30 = np.mean(errors_Glo30)
+ME_Nhc = np.mean(errors_Nhc)
+ME_Tandem = np.mean(errors_Tandem)
+ME_Hydroshed = np.mean(errors_Hydroshed)
+
+
+### ----------------- mean absolute Error ---------------------------------- ###
+AE_Aster  = np.abs(errors_Aster)
+AE_Aw3d30  = np.abs(errors_Aw3d30)
+AE_Fabdem = np.abs(errors_Fabdem)
+AE_Srtm= np.abs(errors_Srtm)
+AE_Merit  = np.abs(errors_Merit)
+AE_Glo30 = np.abs(errors_Glo30)
+AE_Nhc = np.abs(errors_Nhc)
+AE_Tandem = np.abs(errors_Tandem)
+AE_Hydroshed = np.abs(errors_Hydroshed)
+
+MAE_Aster = np.mean(AE_Aster)
+MAE_Aw3d30  = np.mean(AE_Aw3d30)
+MAE_Fabdem = np.mean(AE_Fabdem)
+MAE_Srtm  = np.mean(AE_Srtm)
+MAE_Merit = np.mean(AE_Merit)
+MAE_Glo30 = np.mean(AE_Glo30)
+MAE_Nhc = np.mean(AE_Nhc)
+MAE_Tandem = np.mean(AE_Tandem)
+MAE_Hydroshed = np.mean(AE_Hydroshed)
+
+
+### --------------- Mean sqare Error ---------------------------------------###
+
+SE_Aster  = errors_Aster**2
+SE_Aw3d30  = errors_Aw3d30**2
+SE_Fabdem = errors_Fabdem**2
+SE_Srtm  = errors_Srtm**2
+SE_Merit = errors_Merit**2
+SE_Glo30 = errors_Glo30**2
+SE_Nhc = errors_Nhc**2
+SE_Tandem = errors_Tandem**2
+SE_Hydroshed = errors_Hydroshed**2
+
+#Calculate the mean of the squared errors (MSE)
+MSE_Aster = np.mean(SE_Aster)
+MSE_Aw3d30  = np.mean(SE_Aw3d30)
+MSE_Fabdem = np.mean(SE_Fabdem)
+MSE_Srtm  = np.mean(SE_Srtm)
+MSE_Merit = np.mean(SE_Merit)
+MSE_Glo30 = np.mean(SE_Glo30)
+MSE_Nhc = np.mean(SE_Nhc)
+MSE_Tandem = np.mean(SE_Tandem)
+MSE_Hydroshed = np.mean(SE_Hydroshed)
+
+### --------------- Root Mean Sqaure Error -----------------------------##
+
+RMSE_Aster = np.sqrt(MSE_Aster)
+RMSE_Aw3d30 = np.sqrt(MSE_Aw3d30)
+RMSE_Fabdem = np.sqrt(MSE_Fabdem)
+RMSE_Srtm  = np.sqrt(MSE_Srtm)
+RMSE_Merit = np.sqrt(MSE_Merit)
+RMSE_Glo30 = np.sqrt(MSE_Glo30)
+RMSE_Nhc = np.sqrt(MSE_Nhc)
+RMSE_Tandem = np.sqrt(MSE_Tandem)
+RMSE_Hydroshed = np.sqrt(MSE_Hydroshed)
+
+###------------------------------------------------------------------###
+### Export to excel file ###
+DEMs = ['Aster','Aw3d30','Fabdem','Srtm','Merit','Glo30','Nhc','Tandem','Hydroshed']
+Resolution = [30,30,90,30,30,90,90,30,90]
+ME = [ME_Aster,ME_Aw3d30,ME_Fabdem,ME_Srtm,ME_Merit,ME_Glo30,ME_Nhc,ME_Tandem,ME_Hydroshed]
+MAE = [MAE_Aster,MAE_Aw3d30,MAE_Fabdem,MAE_Srtm,MAE_Merit,MAE_Glo30,MAE_Nhc,MAE_Tandem,MAE_Hydroshed]
+MSE = [MSE_Aster,MSE_Aw3d30,MSE_Fabdem,MSE_Srtm,MSE_Merit,MSE_Glo30,MSE_Nhc,MSE_Tandem,MSE_Hydroshed]
+RMSE = [RMSE_Aster,RMSE_Aw3d30,RMSE_Fabdem,RMSE_Srtm,RMSE_Merit,RMSE_Glo30,RMSE_Nhc,RMSE_Tandem,RMSE_Hydroshed]
+
+Stat = pd.DataFrame([DEMs,Resolution,ME,MAE,MSE,RMSE])
+Stat = Stat.T
+Stat = Stat.rename(columns = {0:'DEM',1:'Resolution',2:'ME',3:'MAE',4:'MSE',5:'RMSE'})
+# Stat.to_excel(r'D:\Aga\03 DEM\Histogram\Stat_all_level2.xlsx')
+
+##################################################################################################
+## Create font graph
+fontsize_tittle = 12
+fontsize_Sub    = 9
+fontsize_label = 8
+fontsize_tick  = 8
+
+
+### Plot Mean Error (ME)
+HIST_ME  = np.linspace(-10,10, 15)
+fig = plt.figure(figsize = (18,6))
+plt.suptitle('Mean Error (ME)', fontsize = fontsize_tittle)
+
+#  subplot #1
+plt.subplot(2,5,1)
+plt.title('Aster DEM', fontsize = fontsize_Sub)
+plt.axvline(ME_Aster, color='red', linestyle='dashed', linewidth=2, label=f'ME : {ME_Aster:.2f}')
+plt.hist(errors_Aster,HIST_ME, color = 'b')
+plt.xlabel('ME',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+plt.legend(fontsize=fontsize_label)
+
+plt.subplot(2,5,2)
+plt.title('Aw3d30 DEM', fontsize = fontsize_Sub)
+plt.axvline(ME_Aw3d30, color='red', linestyle='dashed', linewidth=2, label=f'ME : {ME_Aw3d30:.2f}')
+plt.hist(errors_Aw3d30,HIST_ME, color = 'b')
+plt.xlabel('ME',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+plt.legend(fontsize=fontsize_label)
+
+plt.subplot(2,5,3)
+plt.title('Fabdem DEM', fontsize = fontsize_Sub)
+plt.axvline(ME_Fabdem, color='red', linestyle='dashed', linewidth=2, label=f'ME : {ME_Fabdem:.2f}')
+plt.hist(errors_Fabdem,HIST_ME, color = 'b')
+plt.xlabel('ME',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+plt.legend(fontsize=fontsize_label)
+
+plt.subplot(2,5,4)
+plt.title('Srtm DEM', fontsize = fontsize_Sub)
+plt.axvline(ME_Srtm, color='red', linestyle='dashed', linewidth=2, label=f'ME : {ME_Srtm:.2f}')
+plt.hist(errors_Srtm,HIST_ME, color = 'b')
+plt.xlabel('ME',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+plt.legend(fontsize=fontsize_label)
+
+plt.subplot(2,5,5)
+plt.title('Merit DEM', fontsize = fontsize_Sub)
+plt.axvline(ME_Merit, color='red', linestyle='dashed', linewidth=2, label=f'ME : {ME_Merit:.2f}')
+plt.hist(errors_Merit,HIST_ME, color = 'b')
+plt.xlabel('ME',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+plt.legend(fontsize=fontsize_label)
+
+plt.subplot(2,5,6)
+plt.title('Glo30 DEM', fontsize = fontsize_Sub)
+plt.axvline(ME_Glo30, color='red', linestyle='dashed', linewidth=2, label=f'ME : {ME_Glo30:.2f}')
+plt.hist(errors_Glo30,HIST_ME, color = 'b')
+plt.xlabel('ME',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+plt.legend(fontsize=fontsize_label)
+
+plt.subplot(2,5,7)
+plt.title('Nhc DEM', fontsize = fontsize_Sub)
+plt.axvline(ME_Nhc, color='red', linestyle='dashed', linewidth=2, label=f'ME : {ME_Nhc:.2f}')
+plt.hist(errors_Nhc,HIST_ME, color = 'b')
+plt.xlabel('ME',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+plt.legend(fontsize=fontsize_label)
+
+plt.subplot(2,5,8)
+plt.title('Tandem DEM', fontsize = fontsize_Sub)
+plt.axvline(ME_Tandem, color='red', linestyle='dashed', linewidth=2, label=f'ME : {ME_Tandem:.2f}')
+plt.hist(errors_Tandem,HIST_ME, color = 'b')
+plt.xlabel('ME',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+plt.legend(fontsize=fontsize_label)
+
+plt.subplot(2,5,9)
+plt.title('Hydroshed DEM', fontsize = fontsize_Sub)
+plt.axvline(ME_Hydroshed, color='red', linestyle='dashed', linewidth=2, label=f'ME : {ME_Hydroshed:.2f}')
+plt.hist(errors_Hydroshed,HIST_ME, color = 'b')
+plt.xlabel('ME',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+plt.legend(fontsize=fontsize_label)
+
+plt.tight_layout()
+
+plt.show()
+
+plt.savefig('Graph_Stat_ME_allElevation.png')
+
+### Plot MAEan Absolute Error (MAE)----------------------------------------------------------------------
+HIST_MAE  = np.linspace(0,10, 50)
+fig = plt.figure(figsize = (18,6))
+plt.suptitle('Mean Absolute Error (MAE)', fontsize = fontsize_tittle)
+
+plt.subplot(2,5,1)
+plt.title('Aster DEM', fontsize = fontsize_Sub)
+plt.hist(AE_Aster,HIST_MAE, color = 'b')
+plt.xlabel('MAE',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+
+
+plt.subplot(2,5,2)
+plt.title('Aw3d30 DEM', fontsize = fontsize_Sub)
+plt.hist(AE_Aw3d30,HIST_MAE, color = 'b')
+plt.xlabel('MAE',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+
+plt.subplot(2,5,3)
+plt.title('Fabdem DEM', fontsize = fontsize_Sub)
+plt.hist(AE_Fabdem,HIST_MAE, color = 'b')
+plt.xlabel('MAE',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+
+plt.subplot(2,5,4)
+plt.title('Srtm DEM', fontsize = fontsize_Sub)
+plt.hist(AE_Srtm,HIST_MAE, color = 'b')
+plt.xlabel('MAE',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+
+plt.subplot(2,5,5)
+plt.title('Merit DEM', fontsize = fontsize_Sub)
+plt.hist(AE_Merit,HIST_MAE, color = 'b')
+plt.xlabel('MAE',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+
+plt.subplot(2,5,6)
+plt.title('Glo30 DEM', fontsize = fontsize_Sub)
+plt.hist(AE_Glo30,HIST_MAE, color = 'b')
+plt.xlabel('MAE',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+
+plt.subplot(2,5,7)
+plt.title('Nhc DEM', fontsize = fontsize_Sub)
+plt.hist(AE_Nhc,HIST_MAE, color = 'b')
+plt.xlabel('MAE',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+
+plt.subplot(2,5,8)
+plt.title('Tandem DEM', fontsize = fontsize_Sub)
+plt.hist(AE_Tandem,HIST_MAE, color = 'b')
+plt.xlabel('MAE',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+
+plt.subplot(2,5,9)
+plt.title('Hydroshed DEM', fontsize = fontsize_Sub)
+plt.hist(AE_Hydroshed,HIST_MAE, color = 'b')
+plt.xlabel('MAE',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+
+plt.tight_layout()
+
+plt.show()
+plt.savefig('Graph_Stat_MAE_allElevation.png')
+
+
+### Plot Mean Squared Error (MSE)----------------------------------------------------------------------
+HIST_MSE  = np.linspace(0,10, 50)
+fig = plt.figure(figsize = (18,6))
+plt.suptitle('Mean Squared Error (MSE)', fontsize = fontsize_tittle)
+
+plt.subplot(2,5,1)
+plt.title('Aster DEM', fontsize = fontsize_Sub)
+plt.hist(SE_Aster,HIST_MSE, color = 'b')
+plt.xlabel('MSE',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+
+plt.subplot(2,5,2)
+plt.title('Aw3d30 DEM', fontsize = fontsize_Sub)
+plt.hist(SE_Aw3d30,HIST_MSE, color = 'b')
+plt.xlabel('MSE',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+
+plt.subplot(2,5,3)
+plt.title('Fabdem DEM', fontsize = fontsize_Sub)
+plt.hist(SE_Fabdem,HIST_MSE, color = 'b')
+plt.xlabel('MSE',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+
+plt.subplot(2,5,4)
+plt.title('Srtm DEM', fontsize = fontsize_Sub)
+plt.hist(SE_Srtm,HIST_MSE, color = 'b')
+plt.xlabel('MSE',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+
+plt.subplot(2,5,6)
+plt.title('Merit DEM', fontsize = fontsize_Sub)
+plt.hist(SE_Merit,HIST_MSE, color = 'b')
+plt.xlabel('MSE',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+
+plt.subplot(2,5,7)
+plt.title('Glo30 DEM', fontsize = fontsize_Sub)
+plt.hist(SE_Glo30,HIST_MSE, color = 'b')
+plt.xlabel('MSE',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+
+plt.subplot(2,5,7)
+plt.title('Nhc DEM', fontsize = fontsize_Sub)
+plt.hist(SE_Nhc,HIST_MSE, color = 'b')
+plt.xlabel('MSE',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+
+plt.subplot(2,5,8)
+plt.title('Tandem DEM', fontsize = fontsize_Sub)
+plt.hist(SE_Tandem,HIST_MSE, color = 'b')
+plt.xlabel('MSE',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+
+plt.subplot(2,5,9)
+plt.title('Hydroshed DEM', fontsize = fontsize_Sub)
+plt.hist(SE_Hydroshed,HIST_MSE, color = 'b')
+plt.xlabel('MSE',        size=fontsize_label)
+plt.ylabel('Frequency', size=fontsize_label)
+plt.xticks(fontsize = fontsize_tick)
+plt.yticks(fontsize = fontsize_tick)
+
+plt.tight_layout()
+
+plt.show()
+plt.savefig('Graph_Stat_MSE_allElevation.png')
