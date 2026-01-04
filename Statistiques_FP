@@ -1,0 +1,127 @@
+#Loading all packages
+import os
+import pandas as pd
+from sklearn.metrics import mean_squared_error
+import math  
+import numpy as np
+from sklearn.metrics import mean_absolute_error
+import matplotlib.pyplot as plt
+from statistics import mean 
+import glob
+
+###------- Stat Function --------------------------------------------
+def Stat(Obs_Targetdata,Pre_data):
+        
+        # Remove NaN values from both arrays
+    Obs_Targetdata = np.array(Obs_Targetdata)
+    Pre_data = np.array(Pre_data)
+    
+    valid_indices = ~np.isnan(Obs_Targetdata) & ~np.isnan(Pre_data)
+    Obs_Targetdata = Obs_Targetdata[valid_indices]
+    Pre_data = Pre_data[valid_indices]
+    
+
+
+    # MAE = round(metrics.mean_absolute_error(Obs_Targetdata,Pre_data),2)
+    ME  = round((Obs_Targetdata-Pre_data).mean(),2)
+    MAE = round(np.absolute(np.subtract(Obs_Targetdata,Pre_data)).mean(),2)
+    # MSE = round(metrics.mean_squared_error(Obs_Targetdata,Pre_data),2)
+    MSE = round(np.square(np.subtract(Obs_Targetdata,Pre_data)).mean(),2)
+    # RMSE = round(np.sqrt(metrics.mean_squared_error(Obs_Targetdata,Pre_data)),2)
+    RMSE =  round(math.sqrt(MSE),2)
+    # Rsq = round(metrics.r2_score(Obs_Targetdata,Pre_data),2)
+    r = round(np.corrcoef(Obs_Targetdata, Pre_data)[0, 1],2)
+
+    Rsq = round(r**2,2)
+          
+    NSE = 1-np.sum(np.power(Obs_Targetdata-Pre_data,2))/np.sum(np.power(Obs_Targetdata-np.mean(Pre_data),2))
+    NSE = round(NSE,2)
+    
+    nRMSE = round(RMSE/(( (Pre_data-Pre_data.mean())**2)**0.5).mean(),2)
+    
+
+
+    
+    return ME,MAE,MSE,RMSE,Rsq,NSE,nRMSE,r
+####-----------------------------------------------------------------
+
+#Loading data
+# atl08_folder_path=r"D:\Aga\02 ATL08\Extract ATL08 correction"
+dem_folder=r"D:\Aga\Flood_Path\Point_Comp_FP"
+# atl08_zip=r"D:\Aga\03 DEM\DEM correction\ATL08_test\ATL08_completed.csv.gz"
+atl08_data=pd.read_csv(r"D:\Aga\Flood_Path\Point_Comp_FP\ATL08_FP\ATL08_FP.csv")
+
+
+#Create a table with dem elevation and atl08 elevation
+def parcours(dem_file, df_atl08_all, dem_name):
+    print(f'Loading {dem_name} file...')
+    df_dem=pd.read_csv(dem_file, compression='gzip')
+    df_dem=df_dem.rename(columns={'latitude':'lat','longitude':'lon'})
+    df_dem=df_dem.rename(columns={'dem_elevation_corrected':'DEM_elev'})
+    print("Columns dem loaded :", df_dem.columns.tolist())
+    print("Columns atl08 loaded :", df_atl08_all.columns.tolist())
+    #Rounding ATL08 lat and lon values ...
+    df_atl08_all['lat']=df_atl08_all['lat'].round(6)
+    df_atl08_all['lon']=df_atl08_all['lon'].round(6)
+    df_dem['lat']=df_dem['lat'].round(6)
+    df_dem['lon']=df_dem['lon'].round(6)
+    df_merge=pd.merge(df_atl08_all, 
+                df_dem,
+                on=['lat','lon'], how='inner')
+    df_merge=df_merge.rename(columns={'DEM_elev': dem_name})
+    print(f"{len(df_merge)} points found for {dem_name}")
+    return df_merge
+    
+
+def merge_dem(df_atl08_all, dem_folder):
+    print('Merging dems...')
+    dem_files=glob.glob(os.path.join(dem_folder,"*.csv.gz"))
+    merged_df=df_atl08_all.copy()
+    for dem_file in dem_files:
+        dem_name=os.path.basename(dem_file).split('_')[0].capitalize()
+        print(f"Loading dem : {dem_name}")
+        df_dem=parcours(dem_file, df_atl08_all,dem_name=dem_name)
+        if df_dem.empty:
+            print("No correspondance found for {dem_name}")
+            continue
+        merged_df=pd.merge(merged_df, df_dem[['lat', 'lon', dem_name]], on=['lat', 'lon'], how='left')
+    print('Successfully merged')
+    return merged_df
+
+print("Data merged final")
+
+#Correcting Hydroshed
+
+
+### Calculate the stat all elevation
+print('Calculating stats all elevations')
+df1=merge_dem(atl08_data,dem_folder)
+print(df1.head())
+print('Before cleaning')
+print(f"Min : {atl08_data['ICESat'].min()}")
+print(f"Max : {atl08_data['ICESat'].max()}")
+
+print('Cleaning ICESat data')
+mask_valid=(df1['ICESat']>=-500) & (df1['ICESat']<=9000)
+df2=df1.copy()
+df2.loc[~mask_valid, 'ICESat']=np.nan
+print('After cleaning')
+print(f"Min : {df2['ICESat'].min()}")
+print(f"Max : {df2['ICESat'].max()}")
+print(f'Points suppressed : {len(df1) - len(df2)}')
+
+Stat_aster =Stat(df2['Aster'],df2['ICESat'])
+Stat_aw3d30 =Stat(df2['Aw3d30'], df2['ICESat'])
+Stat_fabdem =Stat(df2['Fabdem'], df2['ICESat'])
+Stat_Srtm =Stat(df2['Srtm'], df2['ICESat'])
+Stat_Merit =Stat(df2['Merit'], df2['ICESat'])
+Stat_Glo30 =Stat(df2['Glo30'], df2['ICESat'])
+Stat_nhc =Stat(df2['Nhc'], df2['ICESat'])
+Stat_TanDEM =Stat(df2['Tandem'], df2['ICESat'])
+Stat_Hydroshed =Stat(df2['Hydroshed'], df2['ICESat'])
+
+StatAll_level =pd.DataFrame([Stat_aster,Stat_aw3d30,Stat_fabdem,Stat_nhc,Stat_Srtm,Stat_Merit,Stat_Glo30,Stat_TanDEM,Stat_Hydroshed])
+StatAll_level['DEM'] =['Aster','Aw3d30','Fabdem','Nhc','Srtm','Merit','Glo30','Tandem','Hydroshed']
+StatAll_level =StatAll_level.rename(columns={0:'ME', 1:'MAE',2:'MSE',3:'RMSE',4:'Rsq',5:'NSE',6:'nRMSE',7:'r'})
+StatAll_level.to_excel('StatAllpoint_level_FP.xlsx')
+print('StatAllpoint_level_FP.xlsx created')
