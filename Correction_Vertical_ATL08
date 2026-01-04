@@ -1,0 +1,37 @@
+#Extracting the values from TGM2017 with the long (x) and lat (y) of the ATL08.csv documents
+
+import pandas as pd
+import rasterio
+import os
+
+atl08_folder = r"D:\Aga\02 ATL08\Extract ATL08"
+
+tgm2017 = r"D:\Aga\04 Geoid\TGM2017\tgm2017.tif"
+
+output_folder = r"D:\Aga\Extract ATL08 correction"
+
+#Creates a list of files .csv in the folder
+atl08_files=[f for f in os.listdir(atl08_folder) if f.endswith(".csv")]
+
+
+#Loads TGM2017 and calculates the new ztgm2017
+
+with rasterio.open(tgm2017) as src :
+    for filename in atl08_files:
+        filepath=os.path.join(atl08_folder, filename)
+        print(f"Processing of {filename}...")
+        #print(filepath)
+        df=pd.read_csv(filepath)
+        xy=[(x,y) for x, y in zip(df['lon'], df['lat'])]
+        tgm_values=list(src.sample(xy)) 
+        tgm_values = [val[0] if val[0] != src.nodata else None for val in tgm_values] #if the value is equal to -9999 or NaN, it becomes None
+    
+        #Adds the values to the table
+        df['tgm']=tgm_values
+        df['ztgm']=df['elev']-df['tgm']
+
+        #Save it to a csv file
+        output_path=os.path.join(output_folder,f"{filename[:-4]}_TGM2017_correction.csv")
+        df.to_csv(output_path, index=False)
+        
+        print(f"Saved in {output_path}")
