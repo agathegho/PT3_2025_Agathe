@@ -1,0 +1,146 @@
+import rasterio
+from rasterio.warp import reproject, Resampling
+import numpy as np
+import pandas as pd
+import gzip
+import glob
+import os
+
+def load_atl08_coordinates(atl08_csv_path,lat_col='lat', lon_col='lon'):
+    print("Loading ATL08 coordinates...")
+    
+    # Trouver tous les fichiers CSV dans le dossier
+    df=pd.read_csv(atl08_csv_path) 
+    df=df.dropna(subset=[lat_col,lon_col])
+    df=df.drop_duplicates(subset=[lat_col,lon_col]) 
+    print(f"Total of {len(df)} coordinates loaded")
+    return df[[lat_col,lon_col]].copy(), df.copy()
+
+def sample_raster_at_coordinates(raster_path, coordinates, raster_name):
+
+    print(f"Sampling of {raster_name}...")
+    
+    with rasterio.open(raster_path) as src:
+        # Convert pixels coordinates to (x,y) coordinates
+        rows, cols = rasterio.transform.rowcol(
+            src.transform, 
+            coordinates['lon'].values, 
+            coordinates['lat'].values
+        )
+        
+        # Lire les données du raster
+        raster_data = src.read(1)
+        
+        # Échantillonner aux coordonnées spécifiées
+        sampled_values = []
+        
+        for row, col in zip(rows, cols):
+            # Verify that coordinates are in the limit of the raster
+            if (0 <= row < raster_data.shape[0]) and (0 <= col < raster_data.shape[1]):
+                value = raster_data[row, col]
+                sampled_values.append(value)
+            else:
+                sampled_values.append(np.nan)
+        
+        print(f"{raster_name} sampled: {len(sampled_values)} points")
+        return np.array(sampled_values)
+
+def process_atl08_correction(atl08_csv_path, dem_path, egm96_path, egm2008_path, 
+                           tgm2017_path, output_csv, reference_geoid='egm96',
+                           lat_col='lat', lon_col='lon'):
+
+    
+    # Étape 1: Load atl08 coordinates
+    atl08_coords, atl08_df = load_atl08_coordinates(atl08_csv_path, lat_col, lon_col)
+    
+    # Étape 2: Resample all rasters to atl088 coordinates
+    dem_values = sample_raster_at_coordinates(dem_path, atl08_coords, 'DEM')
+    egm96_values = sample_raster_at_coordinates(egm96_path, atl08_coords, 'EGM96')
+    egm2008_values = sample_raster_at_coordinates(egm2008_path, atl08_coords, 'EGM2008')
+    tgm2017_values = sample_raster_at_coordinates(tgm2017_path, atl08_coords, 'TGM2017')
+    
+    # Étape 3: Select geoid
+    if reference_geoid == 'egm96':
+        reference_values = egm96_values
+    elif reference_geoid == 'egm2008':
+        reference_values = egm2008_values
+    else:
+        raise ValueError("reference_geoid must be 'egm96' ou 'egm2008'")
+    
+    print("Calcul des élévations corrigées...")
+    
+    # Étape 4: Elevations corrected
+    dem_corrected = dem_values + reference_values - tgm2017_values
+    
+    # Étape 5: Créer le masque pour les valeurs valides
+    valid_mask = (
+        ~np.isnan(dem_values) &
+        ~np.isnan(egm96_values) &
+        ~np.isnan(egm2008_values) &
+        ~np.isnan(tgm2017_values) &
+        (dem_values != -9999) & (dem_values != 32767)
+    )
+    
+    print(f"Points valides: {np.sum(valid_mask)} sur {len(valid_mask)}")
+    
+    # Étape 6: Final dataframe
+    df = pd.DataFrame({
+        'lat': atl08_coords['lat'].values,
+        'lon': atl08_coords['lon'].values,
+        'ICESat': atl08_df['ICESat'].values,
+        'id': atl08_df['id'].values,
+        'left': atl08_df['left'].values,
+        'top': atl08_df['top'].values,
+        'right': atl08_df['right'].values,
+        'bottom': atl08_df['bottom'].values,
+        'row_index': atl08_df['row_index'].values,
+        'col_index': atl08_df['col_index'].values,
+        'dem_elevation': dem_values,
+        'egm96_data': egm96_values,
+        'egm2008_data': egm2008_values,
+        'tgm2017_data': tgm2017_values,
+        'dem_elevation_corrected': dem_corrected,
+        'is_valid': valid_mask
+    })
+    
+    # Filtrer les points valides si désiré
+    df_valid = df[valid_mask].copy()
+    df_valid = df_valid.drop('is_valid', axis=1)
+    
+    # Étape 7: Sauvegarder le fichier CSV compressé
+    compressed_csv = output_csv + '.gz' if not output_csv.endswith('.gz') else output_csv
+    print(f'Sauvegarde du fichier CSV: {compressed_csv}')
+    
+    with gzip.open(compressed_csv, 'wt', newline='') as f:
+        df_valid.to_csv(f, index=False, float_format='%.6f')
+    
+    return df_valid, df
+
+def main():
+    # Configuration des chemins
+    atl08_csv_path = r"D:\Aga\Grid comparison\ATL08_grid_corrected\ATL08_Grid_2.csv"
+    dem_path = r"D:\Aga\03 DEM\SRTM\srtm2.tif"
+    egm96_path = r"D:\Aga\04 Geoid\Chi-Mun\us_nga_egm96_15.tif"
+    egm2008_path = r"D:\Aga\04 Geoid\Chi-Mun\us_nga_egm2008_1.tif"
+    tgm2017_path = r"D:\Aga\04 Geoid\TGM2017\tgm2017.tif"
+    output_csv = r"D:\Aga\Grid comparison\DEM_grid\Srtm_atl08_geoid_correction_results.csv"
+    
+    # Paramètres optionnels
+    reference_geoid = 'egm96'  # ou 'egm2008'
+    lat_col = 'lat'  # Nom de la colonne latitude dans fichiers ATL08
+    lon_col = 'lon'  # Nom de la colonne longitude dans fichiers ATL08
+    
+    try:
+        df_valid, df_all = process_atl08_correction(
+            atl08_csv_path, dem_path, egm96_path, egm2008_path, 
+            tgm2017_path, output_csv, reference_geoid, lat_col, lon_col
+        )
+        
+        
+    except Exception as e:
+        print(f"Erreur: {str(e)}")
+        import traceback
+        traceback.print_exc()
+
+if __name__ == '__main__':
+    main()

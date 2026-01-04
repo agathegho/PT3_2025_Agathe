@@ -1,0 +1,118 @@
+#Loading all packages
+import pandas as pd
+from sklearn.metrics import mean_squared_error
+import math  
+import numpy as np
+from sklearn.metrics import mean_absolute_error
+import matplotlib.pyplot as plt
+from statistics import mean 
+import geopandas as gpd
+
+#csv file containing the ICESat-2 data in TGM2017. The data having been through the chosen grid cells with "Join by attributes"
+print('Loading file...')
+icesat_df = pd.read_csv(r"D:\Aga\Grid comparison\DEM_grid\Merit_atl08_geoid_correction_results.csv.gz", compression='gzip')
+
+#Dataframe with ICESat-2 data containing, grid cell id, elevation and coordinate corners of the grid cells
+columns =[
+        'lat',
+        'lon',
+        'ICESat',
+        'id',
+        'left',
+        'top',
+        'right',
+        'bottom',
+        'egm96_data',
+        'egm2008_data',
+        'tgm2017_data',
+        'dem_elevation_corrected']
+data=icesat_df[columns].copy()
+
+#When implementing data.dropna(), it removes all values where there is no data for one of the two 
+data = data.dropna()
+data = data[data['tgm2017_data'] != 0]
+data= data[data['egm2008_data'] != 0]
+data = data[data['id'] != 0]
+
+#create unique list of names in the id, indicating the grid cell
+unique_ids = data['id'].unique() 
+
+# One cell is associated with a unique gid key and each points in this cell is associated with this key.
+data_by_grid = {gid : data[data['id']==gid] for gid in unique_ids}
+
+coord_lon=[]
+coord_lat=[]
+
+#Define the center of the grid
+for gid in unique_ids:
+    subset=data_by_grid[gid]
+    coord_lon.append(np.mean([subset['left'].iloc[0],subset['right'].iloc[0]]))
+    coord_lat.append(np.mean([subset['top'].iloc[0],subset['bottom'].iloc[0]]))
+    
+def calculate_std(y):
+    n=len(y)
+    mean_y=sum(y)/n
+    return math.sqrt(sum((val-mean_y)**2 for val in y)/n)
+
+ 
+#creating list to make the mse and rmse for the grids
+MSE_list     = []
+RMSE_list    = []
+MAE_list     = []
+ME_list      = []
+nRMSE_list   = []
+Coord_long_list = []
+Coord_lat_list  = []
+
+#Creating a coordinate that is in the center of the grid cell
+for gid in unique_ids:
+    df=data_by_grid[gid]
+    y_true=df['ICESat']
+    y_pred=df['dem_elevation_corrected']
+
+    ME_list.append(mean(df['dem_elevation_corrected'] - df['ICESat']))
+
+    MSE_list.append(mean_squared_error(df['dem_elevation_corrected'],df['ICESat']))
+
+    RMSE_list.append(math.sqrt(mean_squared_error(df['dem_elevation_corrected'],df['ICESat'])))
+
+    MAE_list.append(mean_absolute_error(df['dem_elevation_corrected'],df['ICESat']))
+    
+    std_ice=calculate_std(y_true)
+    if std_ice==0:
+        nRMSE_list.append(0.001)
+    else:
+        nRMSE_list.append(RMSE_list[-1]/std_ice)
+
+print('Calculating stats...')        
+stats_df=pd.DataFrame({
+    'Grid_value':unique_ids,
+    'ME':ME_list,
+    'MAE':MAE_list,
+    'MSE':MSE_list,
+    'RMSE':RMSE_list,
+    'nRMSE':nRMSE_list,
+    'lon':coord_lon,
+    'lat':coord_lat
+    })
+
+stats_df['id']=stats_df['Grid_value']
+stats_df=stats_df.set_index('id').sort_index()
+
+
+stats_df.to_csv(r'D:\Aga\Grid comparison\DEM_grid\Stats\Merit_gridX.csv', index='False') 
+print('File successfully saved')
+
+
+plt.figure(figsize=(15,8))
+bins = np.linspace(-7,7, 50)
+#chose statistics method from above
+plt.hist(stats_df['ME'], bins=bins, color = 'b')
+plt.xlabel('ME', fontsize=24)
+plt.ylabel('Frequency',fontsize=24)
+plt.xticks(rotation=20, fontsize = 20)
+plt.yticks(fontsize = 20)
+plt.title('Histogram of Mean Error (ME)', fontsize=26)
+plt.tight_layout()
+# plt.savefig('ME_Histogram_DEM.png')
+plt.show()
