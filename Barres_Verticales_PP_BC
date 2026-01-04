@@ -1,0 +1,93 @@
+import os
+import pandas as pd
+from sklearn.metrics import mean_squared_error
+import math  
+import numpy as np
+from sklearn.metrics import mean_absolute_error
+import matplotlib.pyplot as plt
+from statistics import mean 
+import glob
+from matplotlib.lines import Line2D
+
+
+## Open excel file 
+
+df_levelAll = pd.read_excel('StatAllpoint_level.xlsx')
+df_level010 = pd.read_excel('StatAllpoint_level010.xlsx')
+df_level05 = pd.read_excel('StatAllpoint_level05.xlsx')
+df_level510 = pd.read_excel('StatAllpoint_level510.xlsx')
+
+
+
+DEMs_Name = ['Aster','AW3D30','Fabdem','NHC','Srtm','Merit','Glo30','TanDEM','Hydrosheds']
+
+## Set front size
+Frontsize1 = 12
+Front_subtittle = 10
+Front_legend = 9
+
+
+### plot df_levelAll 
+background_colors = ["lightblue", "lightgreen"] 
+point = 2.5
+
+fig, ax = plt.subplots(1,4, figsize=(14, 3.8))
+fig.suptitle('Elevation : All')
+
+ax[0].bar(df_levelAll['DEM'],df_levelAll['ME'])
+ax[1].bar(df_levelAll['DEM'],df_levelAll['MAE'])
+ax[2].bar(df_levelAll['DEM'],df_levelAll['MSE'])
+ax[3].bar(df_levelAll['DEM'],df_levelAll['RMSE'])
+
+
+ax[0].set_xlabel('DEM', size = Front_legend)
+ax[1].set_xlabel('DEM', size = Front_legend)
+ax[2].set_xlabel('DEM', size = Front_legend)
+ax[3].set_xlabel('DEM', size = Front_legend)
+
+
+ax[0].set_ylim(-2,6)
+ax[1].set_ylim(0,10)
+ax[2].set_ylim(0,60)
+ax[3].set_ylim(0,10)
+
+ax[0].set_xlim(-0.5,8.5)
+ax[1].set_xlim(-0.5,8.5)
+ax[2].set_xlim(-0.5,8.5)
+ax[3].set_xlim(-0.5,8.5)
+
+
+## Set tick and label with DEM's name
+ax[0].set_xticks(df_levelAll['DEM'])
+ax[1].set_xticks(df_levelAll['DEM'])
+ax[2].set_xticks(df_levelAll['DEM'])
+ax[3].set_xticks(df_levelAll['DEM'])
+
+
+ax[0].set_xticklabels(DEMs_Name,rotation = 90)
+ax[1].set_xticklabels(DEMs_Name,rotation = 90)
+ax[2].set_xticklabels(DEMs_Name,rotation = 90)
+ax[3].set_xticklabels(DEMs_Name,rotation = 90)
+
+
+ax[0].tick_params(labelsize=Front_legend)
+ax[1].tick_params(labelsize=Front_legend)
+ax[2].tick_params(labelsize=Front_legend)
+ax[3].tick_params(labelsize=Front_legend)
+
+
+ax[0].set_title('Mean Error (ME)',size=Front_subtittle)
+ax[1].set_title('Mean Absolute Error (MAE)',size=Front_subtittle)
+ax[2].set_title('Mean Squared Error (MSE)',size=Front_subtittle)
+ax[3].set_title('Root Mean Square Error (RMSE)',size=Front_subtittle)
+
+
+ax[0].set_ylabel('Elevation (m.)', size = Front_legend)
+ax[1].set_ylabel('Elevation (m.)', size = Front_legend)
+ax[2].set_ylabel('Elevation (m.)', size = Front_legend)
+ax[3].set_ylabel('Elevation (m.)', size = Front_legend)
+
+
+plt.tight_layout()
+plt.show()
+plt.savefig('All_poin_level.png')
